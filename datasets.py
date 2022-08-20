@@ -16,7 +16,7 @@ class Dataset:
                              'use_sgc_features, use_identity_features, use_adjacency_features should be used.')
 
         print('Preparing data...')
-        data = np.load(os.path.join('data', name.replace('-', '_')))
+        data = np.load(os.path.join('data', f'{name.replace("-", "_")}.npz'))
         node_features = torch.tensor(data['node_features'])
         labels = torch.tensor(data['node_labels'])
         edges = torch.tensor(data['edges'])
@@ -31,9 +31,13 @@ class Dataset:
         if num_targets == 1:
             labels = labels.float()
 
-        train_idx_list = [torch.where(train_mask)[0] for train_mask in data['train_masks']]
-        val_idx_list = [torch.where(val_mask)[0] for val_mask in data['val_masks']]
-        test_idx_list = [torch.where(test_mask)[0] for test_mask in data['test_mask']]
+        train_masks = torch.tensor(data['train_masks'])
+        val_masks = torch.tensor(data['val_masks'])
+        test_masks = torch.tensor(data['test_masks'])
+
+        train_idx_list = [torch.where(train_mask)[0] for train_mask in train_masks]
+        val_idx_list = [torch.where(val_mask)[0] for val_mask in val_masks]
+        test_idx_list = [torch.where(test_mask)[0] for test_mask in test_masks]
 
         node_features = self.augment_node_features(graph=graph,
                                                    node_features=node_features,
@@ -120,7 +124,7 @@ class Dataset:
 
         if use_adjacency_features:
             graph_without_self_loops = dgl.remove_self_loop(graph)
-            adj_matrix = graph_without_self_loops.adjacency_matrix()
+            adj_matrix = graph_without_self_loops.adjacency_matrix().to_dense()
             node_features = torch.cat([node_features, adj_matrix], axis=1)
 
         return node_features
