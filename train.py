@@ -15,29 +15,29 @@ def get_args():
     parser.add_argument('--name', type=str, default=None, help='Experiment name. If None, model name is used.')
     parser.add_argument('--save_dir', type=str, default='experiments', help='Base directory for saving information.')
     parser.add_argument('--dataset', type=str, default='ogbn-arxiv',
-                        choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M', 'ogbn-proteins',
-                                 'squirrel', 'chameleon', 'actor', 'deezer-europe', 'lastfm-asia', 'facebook', 'github',
-                                 'twitch-de', 'twitch-en', 'twitch-es', 'twitch-fr', 'twitch-pt', 'twitch-ru',
-                                 'flickr', 'yelp'])
-    parser.add_argument('--model', type=str, default='GT', choices=['ResNet', 'GCN', 'SAGE', 'GAT', 'GAT-sep',
-                                                                    'GT', 'GT-sep'])
+                        choices=['wiki-cooc', 'roman-empire', 'amazon-ratings'])
+
+    # model architecture
+    parser.add_argument('--model', type=str, default='GT',
+                        choices=['ResNet', 'GCN', 'SAGE', 'GAT', 'GAT-sep', 'GT', 'GT-sep'])
     parser.add_argument('--num_layers', type=int, default=5)
     parser.add_argument('--hidden_dim', type=int, default=512)
     parser.add_argument('--hidden_dim_multiplier', type=float, default=1)
     parser.add_argument('--num_heads', type=int, default=8)
     parser.add_argument('--normalization', type=str, default='LayerNorm', choices=['None', 'LayerNorm', 'BatchNorm'])
+
+    # regularization
     parser.add_argument('--dropout', type=float, default=0)
+    parser.add_argument('--weight_decay', type=float, default=0)
+
+    # training parameters
     parser.add_argument('--lr', type=float, default=3e-5)
     parser.add_argument('--num_steps', type=int, default=1000)
     parser.add_argument('--num_warmup_steps', type=int, default=None,
                         help='If None, warmup_proportion is used instead.')
     parser.add_argument('--warmup_proportion', type=float, default=0, help='Only used if num_warmup_steps is None.')
-    parser.add_argument('--weight_decay', type=float, default=0)
-    parser.add_argument('--input_labels_proportion', type=float, default=0)
-    parser.add_argument('--label_embedding_dim', type=int, default=128)
+
     parser.add_argument('--num_runs', type=int, default=10)
-    parser.add_argument('--num_data_splits', type=int, default=10,
-                        help='Only used for datasets that do not have standard data splits.')
     parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--amp', default=False, action='store_true')
     parser.add_argument('--verbose', default=False, action='store_true')
@@ -53,11 +53,9 @@ def get_args():
 def train_step(model, dataset, optimizer, scheduler, scaler, amp=False):
     model.train()
 
-    cur_train_idx, cur_label_emb_idx = dataset.get_train_idx_and_label_idx_for_train_step()
-
     with autocast(enabled=amp):
-        logits = model(graph=dataset.graph, x=dataset.node_features, label_emb_idx=cur_label_emb_idx)
-        loss = dataset.loss_fn(input=logits[cur_train_idx], target=dataset.labels[cur_train_idx])
+        logits = model(graph=dataset.graph, x=dataset.node_features)
+        loss = dataset.loss_fn(input=logits[dataset.train_idx], target=dataset.labels[dataset.train_idx])
 
     scaler.scale(loss).backward()
     scaler.step(optimizer)
@@ -70,10 +68,8 @@ def train_step(model, dataset, optimizer, scheduler, scaler, amp=False):
 def evaluate(model, dataset, amp=False):
     model.eval()
 
-    label_emb_idx_for_eval = dataset.get_label_idx_for_evaluation()
-
     with autocast(enabled=amp):
-        logits = model(graph=dataset.graph, x=dataset.node_features, label_emb_idx=label_emb_idx_for_eval)
+        logits = model(graph=dataset.graph, x=dataset.node_features)
 
     metrics = dataset.compute_metrics(logits)
 
@@ -82,9 +78,7 @@ def evaluate(model, dataset, amp=False):
 
 def main():
     args = get_args()
-    dataset = Dataset(name=args.dataset, add_self_loops=(args.model in ['GCN', 'GAT', 'GT']),
-                      num_data_splits=args.num_data_splits, input_labels_proportion=args.input_labels_proportion,
-                      device=args.device)
+    dataset = Dataset(name=args.dataset, add_self_loops=(args.model in ['GCN', 'GAT', 'GT']), device=args.device)
     logger = Logger(args, metric=dataset.metric, num_data_splits=dataset.num_data_splits)
 
     for run in range(1, args.num_runs + 1):
