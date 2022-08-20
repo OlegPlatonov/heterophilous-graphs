@@ -117,6 +117,46 @@ class GATModule(nn.Module):
         return x
 
 
+class GATSepModule(nn.Module):
+    def __init__(self, dim, hidden_dim_multiplier, num_heads, dropout, **kwargs):
+        super().__init__()
+
+        _check_dim_and_num_heads_consistency(dim, num_heads)
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+
+        self.input_linear = nn.Linear(in_features=dim, out_features=dim)
+
+        self.attn_linear_u = nn.Linear(in_features=dim, out_features=num_heads)
+        self.attn_linear_v = nn.Linear(in_features=dim, out_features=num_heads, bias=False)
+        self.attn_act = nn.LeakyReLU(negative_slope=0.2)
+
+        self.feed_forward_module = FeedForwardModule(dim=dim,
+                                                     input_dim_multiplier=2,
+                                                     hidden_dim_multiplier=hidden_dim_multiplier,
+                                                     dropout=dropout)
+
+    def forward(self, graph, x):
+        x = self.input_linear(x)
+
+        attn_scores_u = self.attn_linear_u(x)
+        attn_scores_v = self.attn_linear_v(x)
+        attn_scores = ops.u_add_v(graph, attn_scores_u, attn_scores_v)
+        attn_scores = self.attn_act(attn_scores)
+        attn_probs = edge_softmax(graph, attn_scores)
+
+        x = x.reshape(-1, self.head_dim, self.num_heads)
+        message = ops.u_mul_e_sum(graph, x, attn_probs)
+        x = x.reshape(-1, self.dim)
+        message = message.reshape(-1, self.dim)
+        x = torch.cat([x, message], axis=1)
+
+        x = self.feed_forward_module(graph, x)
+
+        return x
+
+
 class TransformerAttentionModule(nn.Module):
     def __init__(self, dim, num_heads, dropout, **kwargs):
         super().__init__()
@@ -147,6 +187,44 @@ class TransformerAttentionModule(nn.Module):
 
         x = ops.u_mul_e_sum(graph, values, attn_probs)
         x = x.reshape(-1, self.dim)
+
+        x = self.output_linear(x)
+        x = self.dropout(x)
+
+        return x
+
+
+class TransformerAttentionSepModule(nn.Module):
+    def __init__(self, dim, num_heads, dropout, **kwargs):
+        super().__init__()
+
+        _check_dim_and_num_heads_consistency(dim, num_heads)
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+
+        self.attn_query = nn.Linear(in_features=dim, out_features=dim)
+        self.attn_key = nn.Linear(in_features=dim, out_features=dim)
+        self.attn_value = nn.Linear(in_features=dim, out_features=dim)
+
+        self.output_linear = nn.Linear(in_features=dim * 2, out_features=dim)
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, graph, x):
+        queries = self.attn_query(x)
+        keys = self.attn_key(x)
+        values = self.attn_value(x)
+
+        queries = queries.reshape(-1, self.num_heads, self.head_dim)
+        keys = keys.reshape(-1, self.num_heads, self.head_dim)
+        values = values.reshape(-1, self.num_heads, self.head_dim)
+
+        attn_scores = ops.u_dot_v(graph, queries, keys) / self.head_dim ** 0.5
+        attn_probs = edge_softmax(graph, attn_scores)
+
+        message = ops.u_mul_e_sum(graph, values, attn_probs)
+        message = message.reshape(-1, self.dim)
+        x = torch.cat([x, message], axis=1)
 
         x = self.output_linear(x)
         x = self.dropout(x)

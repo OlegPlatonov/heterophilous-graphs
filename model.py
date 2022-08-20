@@ -1,6 +1,6 @@
 from torch import nn
-from modules import (ResidualModuleWrapper, FeedForwardModule, GCNModule, SAGEModule, GATModule,
-                     TransformerAttentionModule)
+from modules import (ResidualModuleWrapper, FeedForwardModule, GCNModule, SAGEModule, GATModule, GATSepModule,
+                     TransformerAttentionModule, TransformerAttentionSepModule)
 
 
 MODULES = {
@@ -8,7 +8,9 @@ MODULES = {
     'GCN': [GCNModule],
     'SAGE': [SAGEModule],
     'GAT': [GATModule],
-    'GT': [TransformerAttentionModule, FeedForwardModule]
+    'GAT-sep': [GATSepModule],
+    'GT': [TransformerAttentionModule, FeedForwardModule],
+    'GT-sep': [TransformerAttentionSepModule, FeedForwardModule]
 }
 
 
