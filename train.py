@@ -15,7 +15,7 @@ def get_args():
     parser.add_argument('--name', type=str, default=None, help='Experiment name. If None, model name is used.')
     parser.add_argument('--save_dir', type=str, default='experiments', help='Base directory for saving information.')
     parser.add_argument('--dataset', type=str, default='ogbn-arxiv',
-                        choices=['wiki-cooc', 'roman-empire', 'amazon-ratings', 'minesweeper', 'workers', 'questions',
+                        choices=['roman-empire', 'amazon-ratings', 'minesweeper', 'workers', 'questions',
                                  'squirrel', 'chameleon', 'actor', 'texas', 'texas-4-classes', 'cornell', 'wisconsin',
                                  'squirrel-filtered', 'chameleon-filtered'])
 
